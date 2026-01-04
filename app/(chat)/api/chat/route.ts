@@ -19,6 +19,7 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
+import { showChart } from "@/lib/ai/tools/show-chart";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import { isProductionEnvironment } from "@/lib/constants";
 import {
@@ -183,6 +184,7 @@ export async function POST(request: Request) {
                 "createDocument",
                 "updateDocument",
                 "requestSuggestions",
+                "showChart",
               ],
           experimental_transform: isReasoningModel
             ? undefined
@@ -202,6 +204,7 @@ export async function POST(request: Request) {
               session,
               dataStream,
             }),
+            showChart: showChart({ session, dataStream }),
           },
           experimental_telemetry: {
             isEnabled: isProductionEnvironment,

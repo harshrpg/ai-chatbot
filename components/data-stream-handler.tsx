@@ -48,6 +48,13 @@ export function DataStreamHandler() {
 
         switch (delta.type) {
           case "data-id":
+            // Chart artifacts are ephemeral and shouldn't fetch documents; keep init id
+            if (draftArtifact.kind === "chart") {
+              return {
+                ...draftArtifact,
+                status: "streaming",
+              };
+            }
             return {
               ...draftArtifact,
               documentId: delta.data,
@@ -74,6 +81,15 @@ export function DataStreamHandler() {
               content: "",
               status: "streaming",
             };
+
+        case "data-chartSymbol":
+          return {
+            ...draftArtifact,
+            content: delta.data,
+            title: draftArtifact.title || `Chart ${delta.data}`,
+            isVisible: true,
+            status: "streaming",
+          };
 
           case "data-finish":
             return {

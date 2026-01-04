@@ -13,6 +13,7 @@ import {
 import useSWR, { useSWRConfig } from "swr";
 import { useDebounceCallback, useWindowSize } from "usehooks-ts";
 import { codeArtifact } from "@/artifacts/code/client";
+import { chartArtifact } from "@/artifacts/chart/client";
 import { imageArtifact } from "@/artifacts/image/client";
 import { sheetArtifact } from "@/artifacts/sheet/client";
 import { textArtifact } from "@/artifacts/text/client";
@@ -32,6 +33,7 @@ import type { VisibilityType } from "./visibility-selector";
 export const artifactDefinitions = [
   textArtifact,
   codeArtifact,
+  chartArtifact,
   imageArtifact,
   sheetArtifact,
 ];

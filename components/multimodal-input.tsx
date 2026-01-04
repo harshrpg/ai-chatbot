@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
-import { CheckIcon } from "lucide-react";
+import { CandlestickChart, CheckIcon } from "lucide-react";
 import {
   type ChangeEvent,
   type Dispatch,
@@ -34,6 +34,7 @@ import {
 } from "@/lib/ai/models";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useArtifact } from "@/hooks/use-artifact";
 import {
   PromptInput,
   PromptInputSubmit,
@@ -86,6 +87,7 @@ function PureMultimodalInput({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
+  const { setArtifact } = useArtifact();
 
   const adjustHeight = useCallback(() => {
     if (textareaRef.current) {
@@ -143,6 +145,39 @@ function PureMultimodalInput({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
+  const trimmedInput = input.trim();
+
+  const handleShowChart = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const symbol = trimmedInput.toUpperCase();
+      if (!symbol) {
+        toast.error("Enter a pair like BTC/USDT to show a chart");
+        return;
+      }
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      setArtifact((currentArtifact) => ({
+        ...currentArtifact,
+        documentId: "init",
+        title: `Chart ${symbol}`,
+        kind: "chart",
+        content: symbol,
+        isVisible: true,
+        status: "idle",
+        boundingBox: {
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        },
+      }));
+
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    },
+    [setArtifact, trimmedInput]
+  );
 
   const submitForm = useCallback(() => {
     window.history.pushState({}, "", `/chat/${chatId}`);
@@ -381,6 +416,11 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
               status={status}
             />
+            <ChartButton
+              disabled={!trimmedInput}
+              onClick={handleShowChart}
+              status={status}
+            />
             <ModelSelectorCompact
               onModelChange={onModelChange}
               selectedModelId={selectedModelId}
@@ -457,6 +497,35 @@ function PureAttachmentsButton({
 }
 
 const AttachmentsButton = memo(PureAttachmentsButton);
+
+function PureChartButton({
+  onClick,
+  status,
+  disabled,
+}: {
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  status: UseChatHelpers<ChatMessage>["status"];
+  disabled: boolean;
+}) {
+  return (
+    <Button
+      aria-label="Show chart"
+      className="aspect-square h-8 rounded-lg p-1 transition-colors hover:bg-accent"
+      data-testid="chart-button"
+      disabled={disabled || status !== "ready"}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick(event);
+      }}
+      type="button"
+      variant="ghost"
+    >
+      <CandlestickChart className="h-3.5 w-3.5" />
+    </Button>
+  );
+}
+
+const ChartButton = memo(PureChartButton);
 
 function PureModelSelectorCompact({
   selectedModelId,
