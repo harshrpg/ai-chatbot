@@ -28,6 +28,10 @@ type DocumentPreviewProps = {
   args?: any;
 };
 
+type PreviewDocument = Omit<Document, "kind"> & {
+  kind: ArtifactKind;
+};
+
 export function DocumentPreview({
   isReadonly,
   result,
@@ -36,7 +40,7 @@ export function DocumentPreview({
   const { artifact, setArtifact } = useArtifact();
 
   const { data: documents, isLoading: isDocumentsFetching } = useSWR<
-    Document[]
+    PreviewDocument[]
   >(result ? `/api/document?id=${result.id}` : null, fetcher);
 
   const previewDocument = useMemo(() => documents?.[0], [documents]);
@@ -84,7 +88,7 @@ export function DocumentPreview({
     return <LoadingSkeleton artifactKind={result.kind ?? args.kind} />;
   }
 
-  const document: Document | null = previewDocument
+  const document: PreviewDocument | null = previewDocument
     ? previewDocument
     : artifact.status === "streaming"
       ? {
@@ -242,7 +246,7 @@ const DocumentHeader = memo(PureDocumentHeader, (prevProps, nextProps) => {
   return true;
 });
 
-const DocumentContent = ({ document }: { document: Document }) => {
+const DocumentContent = ({ document }: { document: PreviewDocument }) => {
   const { artifact } = useArtifact();
 
   const containerClassName = cn(

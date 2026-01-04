@@ -14,7 +14,6 @@ import {
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import type { ArtifactKind } from "@/components/artifact";
 import type { VisibilityType } from "@/components/visibility-selector";
 import { ChatSDKError } from "../errors";
 import { generateUUID } from "../utils";
@@ -30,6 +29,7 @@ import {
   type User,
   user,
   vote,
+  type Document,
 } from "./schema";
 import { generateHashedPassword } from "./utils";
 
@@ -330,7 +330,7 @@ export async function saveDocument({
 }: {
   id: string;
   title: string;
-  kind: ArtifactKind;
+  kind: Document["kind"];
   content: string;
   userId: string;
 }) {

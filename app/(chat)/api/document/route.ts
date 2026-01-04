@@ -1,10 +1,10 @@
 import { auth } from "@/app/(auth)/auth";
-import type { ArtifactKind } from "@/components/artifact";
 import {
   deleteDocumentsByIdAfterTimestamp,
   getDocumentsById,
   saveDocument,
 } from "@/lib/db/queries";
+import type { Document } from "@/lib/db/schema";
 import { ChatSDKError } from "@/lib/errors";
 
 export async function GET(request: Request) {
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     content,
     title,
     kind,
-  }: { content: string; title: string; kind: ArtifactKind } =
+  }: { content: string; title: string; kind: Document["kind"] } =
     await request.json();
 
   const documents = await getDocumentsById({ id });
