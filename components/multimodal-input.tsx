@@ -3,7 +3,7 @@
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import equal from "fast-deep-equal";
-import { CandlestickChart, CheckIcon } from "lucide-react";
+import { CandlestickChart, CheckIcon, Sparkles } from "lucide-react";
 import {
   type ChangeEvent,
   type Dispatch,
@@ -11,6 +11,7 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -28,10 +29,22 @@ import {
   ModelSelectorTrigger,
 } from "@/components/ai-elements/model-selector";
 import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  Command,
+} from "@/components/ui/command";
+import { Badge } from "@/components/ui/badge";
+import {
   chatModels,
   DEFAULT_CHAT_MODEL,
   modelsByProvider,
 } from "@/lib/ai/models";
+import { fetchAllSymbols, type SymbolSearchItem } from "@/lib/tradingview/symbols";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useArtifact } from "@/hooks/use-artifact";
@@ -86,6 +99,7 @@ function PureMultimodalInput({
   onModelChange?: (modelId: string) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chartButtonRef = useRef<HTMLButtonElement>(null);
   const { width } = useWindowSize();
   const { setArtifact } = useArtifact();
 
@@ -147,15 +161,16 @@ function PureMultimodalInput({
   const [uploadQueue, setUploadQueue] = useState<string[]>([]);
   const trimmedInput = input.trim();
 
-  const handleShowChart = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
-      const symbol = trimmedInput.toUpperCase();
+  const openChartForSymbol = useCallback(
+    (rawSymbol: string) => {
+      const symbol = rawSymbol.trim().toUpperCase();
       if (!symbol) {
         toast.error("Enter a pair like BTC/USDT to show a chart");
         return;
       }
 
-      const rect = event.currentTarget.getBoundingClientRect();
+      const rect = chartButtonRef.current?.getBoundingClientRect();
+      setInput(symbol);
       setArtifact((currentArtifact) => ({
         ...currentArtifact,
         documentId: "init",
@@ -164,20 +179,27 @@ function PureMultimodalInput({
         content: symbol,
         isVisible: true,
         status: "idle",
-        boundingBox: {
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-        },
+        boundingBox:
+          rect !== undefined
+            ? {
+                top: rect.top,
+                left: rect.left,
+                width: rect.width,
+                height: rect.height,
+              }
+            : currentArtifact.boundingBox,
       }));
 
       if (textareaRef.current) {
         textareaRef.current.focus();
       }
     },
-    [setArtifact, trimmedInput]
+    [chartButtonRef, setArtifact, setInput]
   );
+
+  const handleShowChart = useCallback(() => {
+    openChartForSymbol(trimmedInput);
+  }, [openChartForSymbol, trimmedInput]);
 
   const submitForm = useCallback(() => {
     window.history.pushState({}, "", `/chat/${chatId}`);
@@ -416,10 +438,15 @@ function PureMultimodalInput({
               selectedModelId={selectedModelId}
               status={status}
             />
+            <TokenPicker
+              disabled={status !== "ready"}
+              onSelectPair={openChartForSymbol}
+            />
             <ChartButton
               disabled={!trimmedInput}
               onClick={handleShowChart}
               status={status}
+              buttonRef={chartButtonRef}
             />
             <ModelSelectorCompact
               onModelChange={onModelChange}
@@ -498,14 +525,198 @@ function PureAttachmentsButton({
 
 const AttachmentsButton = memo(PureAttachmentsButton);
 
+type TokenOption = Pick<SymbolSearchItem, "symbol" | "exchange">;
+
+function TokenPicker({
+  onSelectPair,
+  disabled,
+}: {
+  onSelectPair: (symbol: string) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [tokens, setTokens] = useState<TokenOption[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const featuredPairs = useMemo(
+    () => ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT"],
+    []
+  );
+
+  const loadTokens = useCallback(async () => {
+    if (isLoading || tokens.length > 0) {
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const apiTokens = await fetchAllSymbols();
+      const uniqueTokens = new Map<string, TokenOption>();
+      for (const token of apiTokens) {
+        if (!uniqueTokens.has(token.symbol)) {
+          uniqueTokens.set(token.symbol, {
+            symbol: token.symbol,
+            exchange: token.exchange,
+          });
+        }
+      }
+      const sortedTokens = [...uniqueTokens.values()].sort((first, second) =>
+        first.symbol.localeCompare(second.symbol)
+      );
+      setTokens(sortedTokens);
+    } catch (fetchError) {
+      const message =
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Unable to load tokens right now.";
+      setError(message);
+      toast.error("Could not fetch tokens from CryptoCompare.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, tokens.length]);
+
+  useEffect(() => {
+    if (open) {
+      void loadTokens();
+    }
+  }, [loadTokens, open]);
+
+  const filteredTokens = useMemo(() => {
+    const safeQuery = query.trim().toLowerCase();
+    if (!safeQuery) {
+      return tokens.slice(0, 80);
+    }
+
+    const matches: TokenOption[] = [];
+    for (const token of tokens) {
+      const haystack = `${token.symbol} ${token.exchange}`.toLowerCase();
+      if (haystack.includes(safeQuery)) {
+        matches.push(token);
+      }
+      if (matches.length >= 120) {
+        break;
+      }
+    }
+
+    return matches;
+  }, [query, tokens]);
+
+  const handleSelect = useCallback(
+    (pair: string) => {
+      onSelectPair(pair);
+      setQuery(pair);
+      setOpen(false);
+    },
+    [onSelectPair]
+  );
+
+  return (
+    <>
+      <Button
+        className="h-8 gap-2 rounded-lg border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-amber-200/20 px-3 text-sm font-medium text-primary shadow-[0_0_0_1px_rgba(59,130,246,0.1)] transition-all hover:from-primary/20 hover:to-amber-200/30"
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+        type="button"
+        variant="ghost"
+      >
+        <span className="hidden text-[11px] font-semibold uppercase tracking-wide text-primary sm:inline">
+          Live
+        </span>
+        <Sparkles className="size-4 text-primary" />
+        <span className="text-xs sm:text-sm">Pair finder</span>
+      </Button>
+
+      <CommandDialog open={open} onOpenChange={setOpen}>
+        <div className="space-y-2 border-b bg-gradient-to-r from-primary/10 via-background to-amber-400/15 px-4 py-3">
+          <p className="text-sm font-semibold text-primary">
+            CryptoCompare markets
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Search any trading pair and we will open the TradingView chart on
+            selection.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {featuredPairs.map((pair) => (
+              <Button
+                key={pair}
+                className="border border-primary/30 bg-primary/10 px-3 text-xs font-semibold text-primary shadow-none transition-colors hover:bg-primary/20"
+                onClick={() => handleSelect(pair)}
+                type="button"
+                variant="secondary"
+              >
+                {pair}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <Command className="border-0">
+          <CommandInput
+            autoFocus
+            placeholder="Try BTC/USDT, ETH/USD, SOL/USDC..."
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList>
+            {isLoading && (
+              <CommandEmpty>Loading live markets…</CommandEmpty>
+            )}
+            {!isLoading && error !== null && (
+              <CommandEmpty>{error}</CommandEmpty>
+            )}
+            {!isLoading && error === null && (
+              <>
+                <CommandEmpty>
+                  No pairs match “{query || "your search"}”.
+                </CommandEmpty>
+                <CommandGroup heading="Markets">
+                  {filteredTokens.map((token) => (
+                    <CommandItem
+                      key={`${token.symbol}-${token.exchange}`}
+                      onSelect={() => handleSelect(token.symbol)}
+                      value={token.symbol}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium leading-tight">
+                          {token.symbol}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {token.exchange}
+                        </span>
+                      </div>
+                      <Badge className="ml-auto rounded-full bg-emerald-500/10 text-[11px] font-semibold text-emerald-600 shadow-none dark:text-emerald-200">
+                        Ready
+                      </Badge>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            )}
+          </CommandList>
+          <CommandSeparator />
+          <div className="flex items-center justify-between px-4 py-3 text-[11px] text-muted-foreground">
+            <span>Powered by CryptoCompare</span>
+            <span>Enter to open chart</span>
+          </div>
+        </Command>
+      </CommandDialog>
+    </>
+  );
+}
+
 function PureChartButton({
   onClick,
   status,
   disabled,
+  buttonRef,
 }: {
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onClick: () => void;
   status: UseChatHelpers<ChatMessage>["status"];
   disabled: boolean;
+  buttonRef?: React.RefObject<HTMLButtonElement>;
 }) {
   return (
     <Button
@@ -515,8 +726,9 @@ function PureChartButton({
       disabled={disabled || status !== "ready"}
       onClick={(event) => {
         event.preventDefault();
-        onClick(event);
+        onClick();
       }}
+      ref={buttonRef}
       type="button"
       variant="ghost"
     >
